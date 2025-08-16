@@ -42,10 +42,10 @@
             justify-content: center;
             min-height: 100vh;
             text-align: center;
-            -webkit-user-select: none; /* Safari */
-            -moz-user-select: none; /* Firefox */
-            -ms-user-select: none; /* IE10+/Edge */
-            user-select: none; /* Standard */
+            -webkit-user-select: none;
+            -moz-user-select: none;
+            -ms-user-select: none;
+            user-select: none;
         }
 
         .container {
@@ -80,7 +80,7 @@
             background: #232a35;
             border-radius: 8px;
             word-break: break-all;
-            display: none; /* Initially hidden until auth loads */
+            display: none;
         }
 
         .stats-container {
@@ -133,7 +133,7 @@
             align-items: center;
             justify-content: center;
             width: 100%;
-            padding-top: 100%; /* Creates a perfect square based on width */
+            padding-top: 100%;
             position: relative;
             background-color: var(--element-bg);
             border-radius: 8px;
@@ -202,6 +202,41 @@
             justify-content: center;
             gap: 5px;
             flex-wrap: wrap;
+        }
+        
+        #molecule-list {
+            list-style: none;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            margin: 0;
+        }
+
+        .molecule-item {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 10px;
+            background-color: rgba(0, 0, 0, 0.2);
+            border-radius: 8px;
+            border: 2px solid transparent;
+            transition: border-color 0.3s;
+        }
+        
+        .molecule-item.found {
+            text-decoration: line-through;
+            opacity: 0.6;
+        }
+
+        .molecule-item .molecule-name {
+            font-weight: bold;
+        }
+
+        .molecule-item .molecule-elements {
+            display: flex;
+            gap: 5px;
+            margin-top: 5px;
         }
 
         .molecule-element {
@@ -424,10 +459,9 @@
                 <div class="stat">Time: <span id="timer">00:00</span></div>
             </div>
 
-            <div id="current-molecule-container" class="molecule-display-container">
-                <div id="current-molecule-name"></div>
-                <div id="current-molecule-elements"></div>
-                <div id="combo-message"></div>
+            <div id="molecules-to-find" class="molecule-display-container">
+                <div id="current-molecule-name">Molecules to Find</div>
+                <ul id="molecule-list"></ul>
             </div>
             
             <div id="game-grid-container">
@@ -519,8 +553,7 @@
     const gameGrid = document.getElementById('game-grid');
     const scoreDisplay = document.getElementById('score');
     const timerDisplay = document.getElementById('timer');
-    const currentMoleculeNameDisplay = document.getElementById('current-molecule-name');
-    const currentMoleculeElementsDisplay = document.getElementById('current-molecule-elements');
+    const moleculeListDisplay = document.getElementById('molecule-list');
     const comboMessage = document.getElementById('combo-message');
     const hintMessage = document.getElementById('hint-message');
     const startButton = document.getElementById('start-button');
@@ -540,7 +573,7 @@
     
     // Game State Variables
     const elements = ['H', 'C', 'O', 'N', 'S', 'P', 'Na', 'Cl', 'K'];
-    const molecules = [
+    const allMolecules = [
         { name: 'Water (H₂O)', elements: ['H', 'H', 'O'], score: 100 },
         { name: 'Carbon Dioxide (CO₂)', elements: ['C', 'O', 'O'], score: 120 },
         { name: 'Methane (CH₄)', elements: ['C', 'H', 'H', 'H', 'H'], score: 150 },
@@ -554,12 +587,12 @@
     let timerInterval = null;
     let hintTimerInterval = null;
     let selectedElements = [];
-    let currentMolecule = null;
     let gridElements = [];
     let comboCount = 0;
     let isGameRunning = false;
     let userUid = null;
     let db, auth;
+    let todayMolecules = [];
 
     // --- Firebase & Firestore Setup ---
     const initFirebase = async () => {
@@ -673,23 +706,37 @@
         }
     };
     
-    const getRandomMolecule = () => {
-        const randomIndex = Math.floor(Math.random() * molecules.length);
-        return molecules[randomIndex];
+    const getRandomMolecules = (count) => {
+        const shuffled = [...allMolecules].sort(() => 0.5 - Math.random());
+        return shuffled.slice(0, count);
     };
 
-    const updateMoleculeDisplay = () => {
-        currentMolecule = getRandomMolecule();
-        currentMoleculeNameDisplay.textContent = currentMolecule.name;
-        currentMoleculeElementsDisplay.innerHTML = '';
-        currentMolecule.elements.forEach(element => {
-            const elementSpan = document.createElement('span');
-            elementSpan.className = 'molecule-element';
-            if (currentMolecule.isHard) {
-                elementSpan.classList.add('hard-molecule');
+    const updateMoleculesDisplay = () => {
+        moleculeListDisplay.innerHTML = '';
+        todayMolecules.forEach((mol, index) => {
+            const li = document.createElement('li');
+            li.className = 'molecule-item';
+            if (mol.found) {
+                li.classList.add('found');
             }
-            elementSpan.textContent = element;
-            currentMoleculeElementsDisplay.appendChild(elementSpan);
+            li.dataset.index = index;
+            
+            const nameSpan = document.createElement('span');
+            nameSpan.className = 'molecule-name';
+            nameSpan.textContent = mol.name;
+
+            const elementsDiv = document.createElement('div');
+            elementsDiv.className = 'molecule-elements';
+            mol.elements.forEach(el => {
+                const elementSpan = document.createElement('span');
+                elementSpan.className = 'molecule-element';
+                elementSpan.textContent = el;
+                elementsDiv.appendChild(elementSpan);
+            });
+            
+            li.appendChild(nameSpan);
+            li.appendChild(elementsDiv);
+            moleculeListDisplay.appendChild(li);
         });
     };
 
@@ -720,7 +767,7 @@
         timerDisplay.textContent = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
         
         if (timer <= 0) {
-            endGame();
+            endGame('lost');
         } else if (timer <= 10) {
             timerDisplay.style.color = 'red';
         }
@@ -728,26 +775,6 @@
     
     const showHint = () => {
         if (!isGameRunning) return;
-        const requiredElements = [...currentMolecule.elements];
-        const matchingIndices = [];
-        for (let i = 0; i < gridElements.length; i++) {
-            const element = gridElements[i];
-            const requiredIndex = requiredElements.indexOf(element);
-            if (requiredIndex !== -1) {
-                matchingIndices.push(i);
-                requiredElements.splice(requiredIndex, 1);
-            }
-        }
-        
-        if (matchingIndices.length > 0) {
-            const randomHintIndex = matchingIndices[Math.floor(Math.random() * matchingIndices.length)];
-            const square = gameGrid.querySelector(`[data-index='${randomHintIndex}']`);
-            if (square) {
-                square.style.transform = 'scale(1.1)';
-                setTimeout(() => square.style.transform = 'scale(1)', 500);
-            }
-        }
-        
         hintMessage.textContent = "Hurry up! The time is running out!";
         hintMessage.classList.add('visible');
         setTimeout(() => hintMessage.classList.remove('visible'), 3000);
@@ -776,8 +803,8 @@
         
         updateReactionLine();
         
-        // Check if a molecule is formed after each click
-        if (selectedElements.length === currentMolecule.elements.length) {
+        // Check if a molecule is formed after each click, if we have enough elements selected
+        if (selectedElements.length > 0) {
             checkSolution();
         }
     };
@@ -829,19 +856,36 @@
 
     const checkSolution = () => {
         const selectedSymbols = selectedElements.map(index => gridElements[index]).sort();
-        const moleculeSymbols = [...currentMolecule.elements].sort();
         
-        const isMatch = JSON.stringify(selectedSymbols) === JSON.stringify(moleculeSymbols);
+        // Check if the selected elements match any of the unfound molecules
+        let foundMatch = false;
+        for (let i = 0; i < todayMolecules.length; i++) {
+            const molecule = todayMolecules[i];
+            // Only check unfound molecules
+            if (!molecule.found) {
+                const moleculeSymbols = [...molecule.elements].sort();
+                if (JSON.stringify(selectedSymbols) === JSON.stringify(moleculeSymbols)) {
+                    // Match found!
+                    molecule.found = true;
+                    updateScore(molecule.score);
+                    timer += 10;
+                    updateMoleculesDisplay();
+                    foundMatch = true;
+                    break; // Exit the loop after finding the first match
+                }
+            }
+        }
 
-        if (isMatch) {
-            updateScore(currentMolecule.score);
-            timer += 10; // Add 10 seconds for a correct molecule
+        if (foundMatch) {
             setTimeout(() => {
                 resetSelection();
-                updateMoleculeDisplay();
+                const allFound = todayMolecules.every(mol => mol.found);
+                if (allFound) {
+                    endGame('won');
+                }
             }, 500);
         } else {
-            comboCount = 0; // Reset combo on incorrect attempt
+            comboCount = 0;
             setTimeout(() => {
                 resetSelection();
             }, 500);
@@ -865,8 +909,12 @@
         timerDisplay.textContent = "01:30";
         timerDisplay.style.color = 'var(--timer-color)';
         
+        // Get the daily molecules and reset their found status
+        todayMolecules = getRandomMolecules(5);
+        todayMolecules.forEach(mol => mol.found = false);
+        
         generateGrid();
-        updateMoleculeDisplay();
+        updateMoleculesDisplay();
         resetSelection();
 
         startButton.style.display = 'none';
@@ -877,21 +925,26 @@
         timerInterval = setInterval(updateTimer, 1000);
         
         clearTimeout(hintTimerInterval);
-        hintTimerInterval = setTimeout(showHint, 60000); // 1-minute hint
+        hintTimerInterval = setTimeout(showHint, 60000);
     };
 
-    const endGame = () => {
+    const endGame = (outcome) => {
         isGameRunning = false;
         clearInterval(timerInterval);
         clearTimeout(hintTimerInterval);
         
-        // Show end game message
         const endMessage = document.getElementById('end-game-message');
-        endMessage.innerHTML = `Your Final Score is <span style="color: var(--score-color); font-size: 2rem;">${score}</span>!`;
+        if (outcome === 'won') {
+            document.getElementById('end-game-title').textContent = 'Congratulations!';
+            endMessage.innerHTML = `You found all the molecules! Your Final Score is <span style="color: var(--score-color); font-size: 2rem;">${score}</span>!`;
+        } else {
+            document.getElementById('end-game-title').textContent = 'Game Over!';
+            endMessage.innerHTML = `Time's up! Your Final Score is <span style="color: var(--score-color); font-size: 2rem;">${score}</span>!`;
+        }
+
         hideAllPopups();
         endMessageBox.classList.add('visible');
         
-        // Add score to Firestore
         addScoreToFirestore(score);
     };
 
@@ -922,9 +975,6 @@
     highScoreButton.addEventListener('click', () => {
         hideAllPopups();
         highScoreBox.classList.add('visible');
-        // Fetch and display scores from Firestore when button is clicked
-        // The onSnapshot listener already handles this, but we can re-trigger a fetch
-        // if the user wants to see the latest list.
     });
 
     closeHighScoreButton.addEventListener('click', () => {
