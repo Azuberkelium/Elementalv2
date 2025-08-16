@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Elemental by Azuberkelium</title>
+<style>
+  body { font-family: Arial, sans-serif; text-align: center; margin: 0; padding: 0; background: #f0f0f0; }
+  h1 { margin-top: 20px; }
+  #game { display: grid; grid-template-columns: repeat(4, 80px); grid-gap: 10px; justify-content: center; margin: 20px auto; }
+  .tile { width: 80px; height: 80px; display: flex; justify-content: center; align-items: center; font-size: 20px; background: #fff; border-radius: 10px; box-shadow: 2px 2px 5px rgba(0,0,0,0.2); cursor: pointer; user-select: none; }
+  #score { font-size: 18px; margin-top: 10px; }
+  #timer { font-size: 18px; margin-top: 5px; }
+  #leaderboard { margin-top: 20px; }
+  #leaderboard input { padding: 5px; font-size: 16px; }
+  #leaderboard button { padding: 5px 10px; font-size: 16px; }
+  @media (max-width: 500px) {
+    #game { grid-template-columns: repeat(4, 60px); grid-gap: 8px; }
+    .tile { width: 60px; height: 60px; font-size: 16px; }
+  }
+</style>
+<!-- Firebase -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+</head>
+<body>
+<h1>Elemental by Azuberkelium</h1>
+<div id="score">Score: 0</div>
+<div id="timer">Time: 60</div>
+<div id="game"></div>
+<div id="leaderboard">
+  <h2>Global Leaderboard</h2>
+  <div id="scores"></div>
+  <input type="text" id="playerName" placeholder="Your Name" />
+  <button onclick="submitScore()">Submit Score</button>
+</div>
+
+<script>
+  // Firebase config
+  const firebaseConfig = {
+    apiKey: "YOUR_API_KEY",
+    authDomain: "YOUR_AUTH_DOMAIN",
+    projectId: "YOUR_PROJECT_ID",
+  };
+  firebase.initializeApp(firebaseConfig);
+  const db = firebase.firestore();
+
+  // Elements and molecules
+  const elements = ["H","O","C","N"];
+  const combinations = {
+    "H+H": "H2",
+    "O+O": "O2",
+    "C+O": "CO",
+    "C+O2": "CO2",
+    "H+O": "OH",
+    "H2+O": "H2O",
+    "N+H3": "NH3"
+  };
+
+  let grid = [];
+  let score = 0;
+  let time = 60;
+  const size = 4;
+
+  const gameEl = document.getElementById("game");
+  const scoreEl = document.getElementById("score");
+  const timerEl = document.getElementById("timer");
+
+  function initGame() {
+    grid = Array(size*size).fill(null);
+    addRandomTile();
+    addRandomTile();
+    renderGrid();
+    const interval = setInterval(() => {
+      time--;
+      timerEl.innerText = "Time: " + time;
+      if(time <= 0) {
+        clearInterval(interval);
+        alert("Game Over! Your score: "+score);
+      }
+    },1000);
+  }
+
+  function addRandomTile() {
+    const empty = grid.map((v,i)=>v===null? i : null).filter(v=>v!==null);
+    if(empty.length===0) return;
+    const index = empty[Math.floor(Math.random()*empty.length)];
+    grid[index] = elements[Math.floor(Math.random()*elements.length)];
+  }
+
+  function renderGrid() {
+    gameEl.innerHTML = "";
+    grid.forEach((val,i)=>{
+      const div = document.createElement("div");
+      div.className = "tile";
+      div.innerText = val||"";
+      div.addEventListener("click", ()=>tileClick(i));
+      gameEl.appendChild(div);
+    });
+    scoreEl.innerText = "Score: " + score;
+  }
+
+  let selectedIndex = null;
+  function tileClick(index) {
+    if(grid[index]==null) return;
+    if(selectedIndex===null) {
+      selectedIndex = index;
+    } else {
+      mergeTiles(selectedIndex, index);
+      selectedIndex = null;
+    }
+    renderGrid();
+  }
+
+  function mergeTiles(a,b) {
+    const key1 = grid[a]+"+"+grid[b];
+    const key2 = grid[b]+"+"+grid[a];
+    let result = combinations[key1] || combinations[key2];
+    if(result) {
+      grid[a] = result;
+      grid[b] = null;
+      score += 10;
+      addRandomTile();
+    }
+  }
+
+  function submitScore() {
+    const name = document.getElementById("playerName").value;
+    if(!name) return alert("Enter your name");
+    db.collection("leaderboard").add({name, score}).then(()=>loadLeaderboard());
+  }
+
+  function loadLeaderboard() {
+    db.collection("leaderboard").orderBy("score","desc").limit(10).get()
+      .then(snapshot=>{
+        const scoresEl = document.getElementById("scores");
+        scoresEl.innerHTML = "";
+        snapshot.forEach(doc=>{
+          const data = doc.data();
+          const div = document.createElement("div");
+          div.innerText = `${data.name}: ${data.score}`;
+          scoresEl.appendChild(div);
+        });
+      });
+  }
+
+  initGame();
+  loadLeaderboard();
+</script>
+</body>
+</html>
