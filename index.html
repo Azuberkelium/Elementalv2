@@ -133,7 +133,7 @@
             align-items: center;
             justify-content: center;
             width: 100%;
-            padding-top: 100%;
+            padding-top: calc(100% * 5 / 7); /* Maintain aspect ratio */
             position: relative;
             background-color: var(--element-bg);
             border-radius: 8px;
@@ -530,12 +530,12 @@
             <p><strong>Objective:</strong> Form molecules by tapping and connecting the correct elements on the grid.</p>
             <p><strong>How to Play:</strong></p>
             <ul>
-                <li>A target molecule will appear at the top.</li>
+                <li>A list of molecules to find will appear.</li>
                 <li>Tap on the elements in the grid to select them.</li>
                 <li>Connect elements by drawing a line. You can only connect adjacent elements (horizontally, vertically, or diagonally).</li>
-                <li>Submit the selected elements. If they form the target molecule, you earn points!</li>
-                <li>Each successful combination rewards you with time and points.</li>
-                <li>Form a molecule with a hard element (in red) to earn bonus points.</li>
+                <li>If the selected elements form one of the molecules, you earn points!</li>
+                <li>The tiles you used will be replaced with new random elements, so you can find the same molecules again.</li>
+                <li>Each successful combination earns you points based on the number of elements, plus a speed bonus.</li>
                 <li>Keep going until the timer runs out.</li>
             </ul>
         </div>
@@ -566,7 +566,7 @@
     // Firebase Imports
     import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
     import { getAuth, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-    import { getFirestore, collection, onSnapshot, query, orderBy, limit, addDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+    import { getFirestore, collection, onSnapshot, query, orderBy, limit, addDoc, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
     // Global variables provided by the canvas environment
     const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
@@ -599,29 +599,34 @@
     const submitNameButton = document.getElementById('submit-name-button');
     
     // Game State Variables
+    const GRID_COLS = 5;
+    const GRID_ROWS = 7;
+    const GRID_SIZE = GRID_COLS * GRID_ROWS;
+    
     const elements = ['H', 'C', 'O', 'N', 'S', 'P', 'Na', 'Cl', 'K'];
+    // List of molecules updated to have a maximum of 4 elements.
     const allMolecules = [
-        { name: 'Water (H₂O)', elements: ['H', 'H', 'O'], score: 100 },
-        { name: 'Carbon Dioxide (CO₂)', elements: ['C', 'O', 'O'], score: 120 },
-        { name: 'Methane (CH₄)', elements: ['C', 'H', 'H', 'H', 'H'], score: 150 },
-        { name: 'Ammonia (NH₃)', elements: ['N', 'H', 'H', 'H'], score: 130 },
-        { name: 'Salt (NaCl)', elements: ['Na', 'Cl'], score: 200, isHard: true },
-        { name: 'Sulfuric Acid (H₂SO₄)', elements: ['H', 'H', 'S', 'O', 'O', 'O', 'O'], score: 300, isHard: true },
-        { name: 'Glucose (C₆H₁₂O₆)', elements: ['C', 'C', 'C', 'C', 'C', 'C', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'O', 'O', 'O', 'O', 'O', 'O'], score: 500, isHard: true }
+        { name: 'Water ($H_2O$)', elements: ['H', 'H', 'O'] },
+        { name: 'Carbon Dioxide ($CO_2$)', elements: ['C', 'O', 'O'] },
+        { name: 'Ammonia ($NH_3$)', elements: ['N', 'H', 'H', 'H'] },
+        { name: 'Salt (NaCl)', elements: ['Na', 'Cl'] },
+        { name: 'Hydrogen Peroxide ($H_2O_2$)', elements: ['H', 'H', 'O', 'O'] },
+        { name: 'Sulphur Dioxide ($SO_2$)', elements: ['S', 'O', 'O'] },
+        { name: 'Nitric Oxide (NO)', elements: ['N', 'O'] }
     ];
     let score = 0;
-    let timer = 60; // 60 seconds
+    let timer = 60;
     let timerInterval = null;
     let hintTimerInterval = null;
     let selectedElements = [];
     let gridElements = [];
-    let comboCount = 0;
     let isGameRunning = false;
     let userUid = null;
     let db, auth;
     let todayMolecules = [];
     let hasFoundMolecule = false;
     let finalScore = 0;
+    let lastFindTime = null;
 
     // --- Firebase & Firestore Setup ---
     const initFirebase = async () => {
@@ -653,7 +658,6 @@
         const scoresRef = collection(db, "artifacts", appId, "public", "data", "high-scores");
         
         try {
-            // Check if this score is high enough to be on the board
             const topScoresQuery = query(scoresRef, orderBy("score", "desc"), limit(10));
             const topScoresSnapshot = await getDocs(topScoresQuery);
             const topScores = topScoresSnapshot.docs.map(doc => doc.data().score);
@@ -684,7 +688,6 @@
         const scoresRef = collection(db, "artifacts", appId, "public", "data", "high-scores");
         const q = query(scoresRef, orderBy("score", "desc"), limit(10));
 
-        // Use onSnapshot for real-time updates
         onSnapshot(q, (snapshot) => {
             const scores = [];
             snapshot.forEach((doc) => {
@@ -719,14 +722,13 @@
     const generateGrid = () => {
         gameGrid.innerHTML = '';
         gridElements = [];
-        for (let i = 0; i < 25; i++) {
+        for (let i = 0; i < GRID_SIZE; i++) {
             const element = elements[Math.floor(Math.random() * elements.length)];
             const square = document.createElement('div');
             square.className = 'element-square';
             square.dataset.index = i;
             square.innerHTML = `<span class="element-symbol">${element}</span>`;
             
-            // Touch and click event listeners
             square.addEventListener('click', () => handleElementClick(square));
             square.addEventListener('touchstart', (e) => {
                 e.preventDefault();
@@ -745,13 +747,9 @@
 
     const updateMoleculesDisplay = () => {
         moleculeListDisplay.innerHTML = '';
-        todayMolecules.forEach((mol, index) => {
+        todayMolecules.forEach((mol) => {
             const li = document.createElement('li');
             li.className = 'molecule-item';
-            if (mol.found) {
-                li.classList.add('found');
-            }
-            li.dataset.index = index;
             
             const nameSpan = document.createElement('span');
             nameSpan.className = 'molecule-name';
@@ -772,20 +770,29 @@
         });
     };
 
-    const updateScore = (points) => {
-        score += points;
-        scoreDisplay.textContent = score;
-        comboCount++;
-        if (comboCount > 1) {
-            const comboPoints = (comboCount - 1) * 20;
-            score += comboPoints;
-            scoreDisplay.textContent = score;
-            showComboMessage(comboCount);
+    const updateScore = (molecule) => {
+        const baseScore = molecule.elements.length * 10;
+        let speedBonus = 0;
+        
+        if (lastFindTime) {
+            const timeElapsed = (Date.now() - lastFindTime) / 1000;
+            if (timeElapsed <= 5) { // 5-second bonus threshold
+                speedBonus = 50;
+            }
         }
+        
+        score += baseScore + speedBonus;
+        scoreDisplay.textContent = score;
+
+        let message = `+${baseScore}`;
+        if (speedBonus > 0) {
+            message += ` +${speedBonus} Speed Bonus!`;
+        }
+        showPointsMessage(message);
     };
     
-    const showComboMessage = (count) => {
-        comboMessage.textContent = `${count}x Combo! +${(count - 1) * 20}`;
+    const showPointsMessage = (message) => {
+        comboMessage.textContent = message;
         comboMessage.classList.add('visible');
         setTimeout(() => {
             comboMessage.classList.remove('visible');
@@ -817,13 +824,11 @@
         
         const index = parseInt(square.dataset.index);
         
-        // If already selected, deselect
         if (selectedElements.includes(index)) {
             const idx = selectedElements.indexOf(index);
             selectedElements.splice(idx, 1);
             square.classList.remove('selected');
         } else {
-            // Check if adjacent to a previously selected element
             const lastSelectedIndex = selectedElements[selectedElements.length - 1];
             const isAdjacent = selectedElements.length === 0 || isAdjacentElement(lastSelectedIndex, index);
             
@@ -835,27 +840,24 @@
         
         updateReactionLine();
         
-        // Check if a molecule is formed after each click, if we have enough elements selected
         if (selectedElements.length > 0) {
             checkSolution();
         }
     };
 
     const isAdjacentElement = (idx1, idx2) => {
-        const row1 = Math.floor(idx1 / 5);
-        const col1 = idx1 % 5;
-        const row2 = Math.floor(idx2 / 5);
-        const col2 = idx2 % 5;
+        const row1 = Math.floor(idx1 / GRID_COLS);
+        const col1 = idx1 % GRID_COLS;
+        const row2 = Math.floor(idx2 / GRID_COLS);
+        const col2 = idx2 % GRID_COLS;
         
         const rowDiff = Math.abs(row1 - row2);
         const colDiff = Math.abs(col1 - col2);
         
-        // Check for adjacency (horizontally, vertically, or diagonally)
         return rowDiff <= 1 && colDiff <= 1;
     };
     
     const updateReactionLine = () => {
-        // Clear all existing lines
         document.querySelectorAll('.reaction-line').forEach(line => line.remove());
         
         for (let i = 0; i < selectedElements.length - 1; i++) {
@@ -889,40 +891,46 @@
     const checkSolution = () => {
         const selectedSymbols = selectedElements.map(index => gridElements[index]).sort();
         
-        // Check if the selected elements match any of the unfound molecules
         let foundMatch = false;
-        for (let i = 0; i < todayMolecules.length; i++) {
-            const molecule = todayMolecules[i];
-            // Only check unfound molecules
-            if (!molecule.found) {
-                const moleculeSymbols = [...molecule.elements].sort();
-                if (JSON.stringify(selectedSymbols) === JSON.stringify(moleculeSymbols)) {
-                    // Match found!
-                    molecule.found = true;
-                    updateScore(molecule.score);
-                    timer += 10;
-                    updateMoleculesDisplay();
-                    foundMatch = true;
-                    hasFoundMolecule = true;
-                    break; // Exit the loop after finding the first match
-                }
+        let matchedMolecule = null;
+        for (const molecule of allMolecules) {
+            const moleculeSymbols = [...molecule.elements].sort();
+            if (JSON.stringify(selectedSymbols) === JSON.stringify(moleculeSymbols)) {
+                foundMatch = true;
+                matchedMolecule = molecule;
+                break;
             }
         }
 
         if (foundMatch) {
-            setTimeout(() => {
-                resetSelection();
-                const allFound = todayMolecules.every(mol => mol.found);
-                if (allFound) {
-                    endGame('won');
-                }
-            }, 500);
+            updateScore(matchedMolecule);
+            hasFoundMolecule = true;
+            lastFindTime = Date.now();
+            regenerateSelectedTiles();
         } else {
-            comboCount = 0;
+            // No match found, just reset selection
             setTimeout(() => {
                 resetSelection();
             }, 500);
         }
+    };
+
+    const regenerateSelectedTiles = () => {
+        // Clear old selection and lines
+        const oldSelected = [...selectedElements];
+        resetSelection();
+
+        // Replace the elements in the grid
+        for (const index of oldSelected) {
+            const newElement = elements[Math.floor(Math.random() * elements.length)];
+            gridElements[index] = newElement;
+            const square = gameGrid.children[index];
+            square.querySelector('.element-symbol').textContent = newElement;
+        }
+
+        // Re-generate a list of molecules for display that are possible
+        // This makes sure the user always has a solvable set on the screen
+        generateAndValidateGrid();
     };
     
     const resetSelection = () => {
@@ -933,22 +941,84 @@
         document.querySelectorAll('.reaction-line').forEach(line => line.remove());
     };
 
+    // --- Grid Validation Logic ---
+    const isMoleculePossibleOnGrid = (molecule, currentGrid) => {
+        const targetElements = [...molecule.elements];
+        
+        for (let i = 0; i < GRID_SIZE; i++) {
+            if (currentGrid[i] === targetElements[0]) {
+                if (findPath(i, targetElements, currentGrid, new Set([i]))) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    };
+    
+    const findPath = (currentIndex, remainingElements, currentGrid, visitedSet) => {
+        if (remainingElements.length === 0) {
+            return true;
+        }
+        
+        const currentElement = remainingElements[0];
+        const nextElements = remainingElements.slice(1);
+        
+        const row = Math.floor(currentIndex / GRID_COLS);
+        const col = currentIndex % GRID_COLS;
+        
+        for (let r = -1; r <= 1; r++) {
+            for (let c = -1; c <= 1; c++) {
+                if (r === 0 && c === 0) continue;
+                
+                const nextRow = row + r;
+                const nextCol = col + c;
+                const nextIndex = nextRow * GRID_COLS + nextCol;
+                
+                if (nextRow >= 0 && nextRow < GRID_ROWS && nextCol >= 0 && nextCol < GRID_COLS && !visitedSet.has(nextIndex)) {
+                    if (currentGrid[nextIndex] === nextElements[0]) {
+                        const newVisited = new Set(visitedSet);
+                        newVisited.add(nextIndex);
+                        if (findPath(nextIndex, nextElements, currentGrid, newVisited)) {
+                            return true;
+                        }
+                    }
+                }
+            }
+        }
+        return false;
+    };
+    
+    const generateAndValidateGrid = () => {
+        let possibleCount = 0;
+        let attempt = 0;
+        
+        do {
+            attempt++;
+            generateGrid();
+            todayMolecules = getRandomMolecules(5);
+            possibleCount = todayMolecules.filter(mol => isMoleculePossibleOnGrid(mol, gridElements)).length;
+            
+            if (attempt > 100) {
+                console.error("Could not find a solvable grid after 100 attempts.");
+                break;
+            }
+        } while (possibleCount < 2);
+
+        console.log(`Grid generated with ${possibleCount} possible molecules in ${attempt} attempts.`);
+        updateMoleculesDisplay();
+    };
+
     const initGame = () => {
         isGameRunning = true;
         score = 0;
         timer = 60;
-        comboCount = 0;
         hasFoundMolecule = false;
+        lastFindTime = Date.now();
         scoreDisplay.textContent = score;
         timerDisplay.textContent = "01:00";
         timerDisplay.style.color = 'var(--timer-color)';
         
-        // Get the daily molecules and reset their found status
-        todayMolecules = getRandomMolecules(5);
-        todayMolecules.forEach(mol => mol.found = false);
-        
-        generateGrid();
-        updateMoleculesDisplay();
+        generateAndValidateGrid();
         resetSelection();
 
         startButton.style.display = 'none';
@@ -969,13 +1039,8 @@
         finalScore = score;
         
         const endMessage = document.getElementById('end-game-message');
-        if (outcome === 'won') {
-            document.getElementById('end-game-title').textContent = 'Congratulations!';
-            endMessage.innerHTML = `You found all the molecules! Your Final Score is <span style="color: var(--score-color); font-size: 2rem;">${finalScore}</span>!`;
-        } else {
-            document.getElementById('end-game-title').textContent = 'Game Over!';
-            endMessage.innerHTML = `Time's up! Your Final Score is <span style="color: var(--score-color); font-size: 2rem;">${finalScore}</span>!`;
-        }
+        document.getElementById('end-game-title').textContent = 'Game Over!';
+        endMessage.innerHTML = `Time's up! Your Final Score is <span style="color: var(--score-color); font-size: 2rem;">${finalScore}</span>!`;
 
         hideAllPopups();
         endMessageBox.classList.add('visible');
