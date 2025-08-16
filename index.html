@@ -75,6 +75,16 @@
   let timeLeft = 60;
   let timerInterval;
 
+  // --- Sounds ---
+  const clickSound = new Audio('data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAIA+AAACABAAZGF0YQAAAAA=');
+  const bonusSound = new Audio('data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAIA+AAACABAAZGF0YQAAAAA=');
+  const gameOverSound = new Audio('data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAIA+AAACABAAZGF0YQAAAAA=');
+
+  function playSound(el) {
+    if(el.textContent==='⭐') bonusSound.play();
+    else clickSound.play();
+  }
+
   function createGrid() {
     grid.innerHTML = '';
     for(let i=0;i<GRID_SIZE*GRID_SIZE;i++){
@@ -93,6 +103,7 @@
   }
 
   function handleClick(el){
+    playSound(el);
     if(el.textContent === '⭐') score += 5;
     else score += 1;
     scoreEl.textContent = 'Score: '+score;
@@ -126,6 +137,7 @@
     clearInterval(timerInterval);
     startBtn.disabled = false;
     nameInputContainer.style.display = 'block';
+    gameOverSound.play();
     alert('Game Over! Enter your name to save score.');
   }
 
