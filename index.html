@@ -306,6 +306,23 @@
             align-items: center;
             gap: 8px;
         }
+        
+        .popup-content input {
+            padding: 10px;
+            border-radius: 8px;
+            border: 2px solid var(--popup-border);
+            background-color: var(--grid-bg);
+            color: var(--text-color);
+            font-size: 1rem;
+            margin-top: 10px;
+            width: 80%;
+            box-sizing: border-box;
+        }
+
+        .popup-content input:focus {
+            outline: none;
+            border-color: var(--selected-bg);
+        }
 
         .game-button:hover {
             background-color: var(--btn-hover-bg);
@@ -491,6 +508,13 @@
                 <button class="close-btn"><i class="fas fa-times"></i></button>
             </div>
             <p id="end-game-message"></p>
+            <div id="name-input-container" style="display: none; text-align: center; margin-top: 10px;">
+                <p>Enter your name for the leaderboard:</p>
+                <input type="text" id="player-name-input" maxlength="20" placeholder="Your Name">
+                <div class="button-container">
+                    <button id="submit-name-button" class="game-button">Submit Score</button>
+                </div>
+            </div>
             <div class="button-container">
                 <button id="message-button" class="game-button">Play Again</button>
             </div>
@@ -570,6 +594,9 @@
     const userIdDisplay = document.getElementById('user-id');
     const highScoreList = document.getElementById('high-score-list');
     const loadingScoresMessage = document.getElementById('loading-scores-message');
+    const nameInputContainer = document.getElementById('name-input-container');
+    const playerNameInput = document.getElementById('player-name-input');
+    const submitNameButton = document.getElementById('submit-name-button');
     
     // Game State Variables
     const elements = ['H', 'C', 'O', 'N', 'S', 'P', 'Na', 'Cl', 'K'];
@@ -583,7 +610,7 @@
         { name: 'Glucose (C₆H₁₂O₆)', elements: ['C', 'C', 'C', 'C', 'C', 'C', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'O', 'O', 'O', 'O', 'O', 'O'], score: 500, isHard: true }
     ];
     let score = 0;
-    let timer = 90; // 90 seconds
+    let timer = 60; // 60 seconds
     let timerInterval = null;
     let hintTimerInterval = null;
     let selectedElements = [];
@@ -593,6 +620,8 @@
     let userUid = null;
     let db, auth;
     let todayMolecules = [];
+    let hasFoundMolecule = false;
+    let finalScore = 0;
 
     // --- Firebase & Firestore Setup ---
     const initFirebase = async () => {
@@ -615,7 +644,7 @@
         }
     };
 
-    const addScoreToFirestore = async (score) => {
+    const addScoreToFirestore = async (score, name) => {
         if (!db || !userUid) {
             console.error("Firestore not initialized.");
             return;
@@ -634,10 +663,13 @@
             if (score >= minTopScore) {
                 await addDoc(scoresRef, {
                     userId: userUid,
+                    name: name || `User: ${userUid.substring(0, 4)}...`,
                     score: score,
                     createdAt: new Date()
                 });
                 console.log("Score added to Firestore:", score);
+                hideAllPopups();
+                highScoreBox.classList.add('visible');
             } else {
                 console.log("Score not high enough to be on leaderboard.");
             }
@@ -676,7 +708,7 @@
             const li = document.createElement('li');
             li.innerHTML = `
                 <span>${index + 1}.</span>
-                <span>User: ${score.userId.substring(0, 4)}...</span>
+                <span>${score.name}</span>
                 <span>${score.score}</span>
             `;
             highScoreList.appendChild(li);
@@ -774,7 +806,7 @@
     };
     
     const showHint = () => {
-        if (!isGameRunning) return;
+        if (!isGameRunning || hasFoundMolecule) return;
         hintMessage.textContent = "Hurry up! The time is running out!";
         hintMessage.classList.add('visible');
         setTimeout(() => hintMessage.classList.remove('visible'), 3000);
@@ -871,6 +903,7 @@
                     timer += 10;
                     updateMoleculesDisplay();
                     foundMatch = true;
+                    hasFoundMolecule = true;
                     break; // Exit the loop after finding the first match
                 }
             }
@@ -903,10 +936,11 @@
     const initGame = () => {
         isGameRunning = true;
         score = 0;
-        timer = 90;
+        timer = 60;
         comboCount = 0;
+        hasFoundMolecule = false;
         scoreDisplay.textContent = score;
-        timerDisplay.textContent = "01:30";
+        timerDisplay.textContent = "01:00";
         timerDisplay.style.color = 'var(--timer-color)';
         
         // Get the daily molecules and reset their found status
@@ -925,27 +959,27 @@
         timerInterval = setInterval(updateTimer, 1000);
         
         clearTimeout(hintTimerInterval);
-        hintTimerInterval = setTimeout(showHint, 60000);
+        hintTimerInterval = setTimeout(showHint, 7000);
     };
 
     const endGame = (outcome) => {
         isGameRunning = false;
         clearInterval(timerInterval);
         clearTimeout(hintTimerInterval);
+        finalScore = score;
         
         const endMessage = document.getElementById('end-game-message');
         if (outcome === 'won') {
             document.getElementById('end-game-title').textContent = 'Congratulations!';
-            endMessage.innerHTML = `You found all the molecules! Your Final Score is <span style="color: var(--score-color); font-size: 2rem;">${score}</span>!`;
+            endMessage.innerHTML = `You found all the molecules! Your Final Score is <span style="color: var(--score-color); font-size: 2rem;">${finalScore}</span>!`;
         } else {
             document.getElementById('end-game-title').textContent = 'Game Over!';
-            endMessage.innerHTML = `Time's up! Your Final Score is <span style="color: var(--score-color); font-size: 2rem;">${score}</span>!`;
+            endMessage.innerHTML = `Time's up! Your Final Score is <span style="color: var(--score-color); font-size: 2rem;">${finalScore}</span>!`;
         }
 
         hideAllPopups();
         endMessageBox.classList.add('visible');
-        
-        addScoreToFirestore(score);
+        nameInputContainer.style.display = 'block';
     };
 
     const hideAllPopups = () => {
@@ -960,7 +994,13 @@
 
     messageButton.addEventListener('click', () => {
         hideAllPopups();
+        nameInputContainer.style.display = 'none';
         initGame();
+    });
+
+    submitNameButton.addEventListener('click', () => {
+        const name = playerNameInput.value.trim();
+        addScoreToFirestore(finalScore, name);
     });
     
     rulesButton.addEventListener('click', () => {
