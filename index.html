@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Elemental Connection</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <!-- Firebase SDK -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js"></script>
+
+  <style>
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      margin: 0; padding: 0;
+      display: flex; flex-direction: column;
+      align-items: center; min-height: 100vh;
+      background: linear-gradient(135deg,#1e3c72,#2a5298); color: #fff;
+    }
+    h1 { margin: 20px 0; font-size: 2.5em; text-shadow: 2px 2px 4px rgba(0,0,0,0.5); }
+    .container { display: flex; flex-direction: row; width: 90%; max-width: 1200px; margin-bottom: 20px; }
+    .sidebar { width: 250px; margin-left: 20px; background: rgba(255,255,255,0.1); padding: 15px; border-radius: 10px; box-shadow: 0 4px 10px rgba(0,0,0,0.3); }
+    .molecule-list { list-style: none; padding: 0; margin: 0; }
+    .molecule-list li { padding: 8px; margin-bottom: 5px; background: rgba(255,255,255,0.1); border-radius: 6px; transition: background 0.3s, transform 0.2s; cursor: pointer; }
+    .molecule-list li:hover { background: rgba(255,255,255,0.2); transform: scale(1.02); }
+    .molecule-list li.completed { background: rgba(0,255,0,0.3); text-decoration: line-through; }
+    .scoreboard { margin-top: 20px; }
+    .scoreboard h3 { margin-bottom: 10px; text-align: center; }
+    .scoreboard ul { list-style: none; padding: 0; margin: 0; }
+    .scoreboard li { display: flex; justify-content: space-between; padding: 5px 0; border-bottom: 1px solid rgba(255,255,255,0.2); }
+    .game-area { flex: 1; display: flex; justify-content: center; align-items: center; }
+    .grid { display: grid; grid-template-columns: repeat(6, 70px); grid-template-rows: repeat(6, 70px); gap: 10px; background: rgba(255,255,255,0.1); padding: 10px; border-radius: 10px; box-shadow: 0 4px 10px rgba(0,0,0,0.3); }
+    .element { width: 70px; height: 70px; background: rgba(255,255,255,0.2); border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 1.2em; cursor: pointer; transition: background 0.3s, transform 0.2s; position: relative; }
+    .element:hover { background: rgba(255,255,255,0.3); transform: scale(1.05); }
+    .element.selected { background: #ff9800; transform: scale(1.1); }
+    .element.hint { animation: hintAnimation 1s infinite; }
+    @keyframes hintAnimation { 0% { background: #4caf50; } 50% { background: #81c784; } 100% { background: #4caf50; } }
+    .button { padding: 10px 20px; margin: 5px; border: none; border-radius: 6px; background: #2196f3; color: #fff; font-size: 1em; cursor: pointer; transition: background 0.3s, transform 0.2s; }
+    .button:hover { background: #1976d2; transform: scale(1.05); }
+    .popup { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%) scale(0); background: #333; padding: 30px; border-radius: 10px; box-shadow: 0 8px 20px rgba(0,0,0,0.5); z-index: 1000; color: #fff; text-align: center; max-width: 400px; width: 80%; transition: transform 0.3s ease-in-out; }
+    .popup.show { transform: translate(-50%, -50%) scale(1); }
+    .popup h2 { margin-bottom: 15px; }
+    .message-box input { padding: 8px; border-radius: 6px; border: none; width: 80%; margin-bottom: 12px; }
+  </style>
+</head>
+<body>
+  <h1>Elemental Connection</h1>
+  <div class="container">
+    <div class="game-area">
+      <div class="grid" id="grid"></div>
+    </div>
+    <div class="sidebar">
+      <h3>Molecules to Find</h3>
+      <ul class="molecule-list" id="molecule-list"></ul>
+      <div class="scoreboard">
+        <h3>High Scores</h3>
+        <ul id="high-score-list"></ul>
+      </div>
+    </div>
+  </div>
+
+  <!-- Popups -->
+  <div id="message-box" class="popup message-box">
+    <h2 id="message-title"></h2>
+    <p id="message-text"></p>
+    <input type="text" id="player-name" placeholder="Enter your name" maxlength="12">
+    <button id="message-button" class="button">Submit Score & Play Again</button>
+  </div>
+
+  <script>
+    // --- Firebase Setup ---
+    const firebaseConfig = {
+      apiKey: "YOUR_API_KEY",
+      authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
+      projectId: "YOUR_PROJECT_ID",
+    };
+    let db;
+    try {
+      const app = firebase.initializeApp(firebaseConfig);
+      db = firebase.firestore();
+    } catch (e) {
+      console.warn("Firebase not available, using localStorage only.");
+    }
+
+    const LEADERBOARD_COLLECTION = "elementalLeaderboard";
+    const HIGH_SCORE_COUNT = 10;
+
+    // --- Game State ---
+    const grid = document.getElementById('grid');
+    const moleculeListEl = document.getElementById('molecule-list');
+    const highScoreList = document.getElementById('high-score-list');
+    const messageBox = document.getElementById('message-box');
+    const messageTitle = document.getElementById('message-title');
+    const messageText = document.getElementById('message-text');
+    const messageButton = document.getElementById('message-button');
+
+    let score = 0;
+    let highScores = [];
+    let gameActive = true;
+    let selected = [];
+    let molecules = [];
+    let foundMolecules = new Set();
+
+    // Bonuses
+    let lastSolvedTime = 0;
+    let comboTracker = {};
+    let lastMolecule = null;
+
+    const ELEMENTS = ["H","O","C","N","S"];
+    const MOLECULES = [
+      { name: "H2O", formula: ["H","H","O"] },
+      { name: "CO2", formula: ["C","O","O"] },
+      { name: "O2", formula: ["O","O"] },
+      { name: "N2", formula: ["N","N"] },
+      { name: "CH4", formula: ["C","H","H","H","H"] },
+      { name: "H2SO4", formula: ["H","H","S","O","O","O","O"], hard:true },
+      { name: "C6H12O6", formula: ["C","C","C","C","C","C","H","H","H","H","H","H","H","H","H","H","H","H","O","O","O","O","O","O"], hard:true }
+    ];
+
+    // --- High Score Functions ---
+    async function saveHighScore(newScore, playerName) {
+      try {
+        if (db) {
+          await db.collection(LEADERBOARD_COLLECTION).add({
+            name: playerName || "Anonymous",
+            score: newScore,
+            date: new Date().toISOString()
+          });
+        } else {
+          highScores.push({ name: playerName || "Anonymous", score: newScore });
+          highScores.sort((a,b) => b.score - a.score);
+          highScores = highScores.slice(0, HIGH_SCORE_COUNT);
+          localStorage.setItem('highScores', JSON.stringify(highScores));
+        }
+      } catch (err) {
+        console.error("Error saving score:", err);
+      }
+      loadHighScores();
+    }
+
+    async function loadHighScores() {
+      try {
+        if (db) {
+          const snapshot = await db.collection(LEADERBOARD_COLLECTION)
+            .orderBy("score", "desc")
+            .limit(HIGH_SCORE_COUNT)
+            .get();
+          highScores = snapshot.docs.map(doc => doc.data());
+        } else {
+          highScores = JSON.parse(localStorage.getItem('highScores')) || [];
+        }
+      } catch (err) {
+        console.error("Error loading scores:", err);
+        highScores = JSON.parse(localStorage.getItem('highScores')) || [];
+      }
+      updateHighScoresUI();
+    }
+
+    function updateHighScoresUI() {
+      highScoreList.innerHTML = '';
+      if (highScores.length === 0) {
+        highScoreList.innerHTML = '<li>No scores yet!</li>';
+        return;
+      }
+      highScores.forEach((entry, i) => {
+        const li = document.createElement('li');
+        li.innerHTML = `<span>${i+1}. ${entry.name}</span><span>${entry.score}</span>`;
+        highScoreList.appendChild(li);
+      });
+    }
+
+    // --- Game Logic ---
+    function endGame() {
+      gameActive = false;
+      messageTitle.textContent = "Game Over!";
+      messageText.textContent = `Your Score: ${score}`;
+      messageBox.classList.add('show');
+    }
+
+    messageButton.addEventListener('click', async () => {
+      const playerName = document.getElementById('player-name').value.trim();
+      await saveHighScore(score, playerName);
+      messageBox.classList.remove('show');
+      initGame();
+    });
+
+    function initGame() {
+      score = 0;
+      grid.innerHTML = '';
+      selected = [];
+      foundMolecules.clear();
+      molecules = [...MOLECULES];
+      lastSolvedTime = 0;
+      comboTracker = {};
+      lastMolecule = null;
+
+      // Generate random grid of elements
+      for (let i=0;i<36;i++) {
+        const el = document.createElement('div');
+        el.className = "element";
+        el.textContent = ELEMENTS[Math.floor(Math.random()*ELEMENTS.length)];
+        el.addEventListener('click', () => selectElement(el));
+        grid.appendChild(el);
+      }
+
+      // Sidebar list
+      moleculeListEl.innerHTML = '';
+      molecules.forEach(m => {
+        const li = document.createElement('li');
+        li.textContent = m.name;
+        li.dataset.name = m.name;
+        moleculeListEl.appendChild(li);
+      });
+
+      loadHighScores();
+      gameActive = true;
+    }
+
+    function selectElement(el) {
+      if (!gameActive) return;
+      if (el.classList.contains('selected')) {
+        el.classList.remove('selected');
+        selected = selected.filter(s => s!==el);
+      } else {
+        el.classList.add('selected');
+        selected.push(el);
+      }
+      checkSelection();
+    }
+
+    function checkSelection() {
+      const selection = selected.map(el=>el.textContent);
+      for (let mol of molecules) {
+        if (arraysEqual(selection, mol.formula)) {
+          foundMolecules.add(mol.name);
+
+          // Base score
+          let points = mol.hard ? 100 : 10*mol.formula.length;
+
+          // Speed bonus
+          const now = Date.now();
+          if (lastSolvedTime && (now - lastSolvedTime) <= 5000) {
+            points += 50;
+          }
+          lastSolvedTime = now;
+
+          // Combo bonus
+          if (lastMolecule === mol.name) {
+            comboTracker[mol.name] = (comboTracker[mol.name] || 1) + 1;
+            points += comboTracker[mol.name] * 20;
+          } else {
+            comboTracker[mol.name] = 1;
+          }
+          lastMolecule = mol.name;
+
+          score += points;
+
+          selected.forEach(el=>el.classList.remove('selected'));
+          selected = [];
+          const li = moleculeListEl.querySelector(`[data-name="${mol.name}"]`);
+          if (li) li.classList.add('completed');
+          if (foundMolecules.size === molecules.length) endGame();
+        }
+      }
+    }
+
+    function arraysEqual(a,b) {
+      return a.length===b.length && a.every((v,i)=>v===b[i]);
+    }
+
+    initGame();
+  </script>
+</body>
+</html>
