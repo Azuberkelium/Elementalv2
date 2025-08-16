@@ -1,0 +1,941 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Elemental by Azuberkelium</title>
+    <!-- Use a modern font from Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;700&display=swap" rel="stylesheet">
+    <!-- Font Awesome for icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <style>
+        :root {
+            --bg-color: #1a202c;
+            --container-bg: #2d3748;
+            --text-color: #e2e8f0;
+            --grid-bg: #4a5568;
+            --element-bg: #a0aec0;
+            --element-hover-bg: #cbd5e0;
+            --selected-bg: #38a169;
+            --score-color: #ecc94b;
+            --timer-color: #f56565;
+            --line-color: #48bb78;
+            --btn-bg: #4c51bf;
+            --btn-hover-bg: #434190;
+            --combo-color: #a546d1;
+            --hard-molecule-bg: #f56565;
+            --popup-bg: #2d3748;
+            --popup-border: #4a5568;
+        }
+
+        body {
+            font-family: 'Montserrat', sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            margin: 0;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            text-align: center;
+            -webkit-user-select: none; /* Safari */
+            -moz-user-select: none; /* Firefox */
+            -ms-user-select: none; /* IE10+/Edge */
+            user-select: none; /* Standard */
+        }
+
+        .container {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            padding: 20px;
+            width: 100%;
+            max-width: 900px;
+            box-sizing: border-box;
+        }
+
+        .header {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        #title {
+            font-size: 2.5rem;
+            font-weight: 700;
+            color: var(--score-color);
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+        }
+        
+        #user-id {
+            font-size: 0.8rem;
+            color: #a0aec0;
+            font-family: monospace;
+            padding: 5px;
+            background: #232a35;
+            border-radius: 8px;
+            word-break: break-all;
+            display: none; /* Initially hidden until auth loads */
+        }
+
+        .stats-container {
+            display: flex;
+            justify-content: space-around;
+            background-color: var(--container-bg);
+            padding: 15px;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+
+        .stat {
+            font-size: 1.1rem;
+            font-weight: 700;
+        }
+        
+        #timer {
+            color: var(--timer-color);
+        }
+        
+        #score {
+            color: var(--score-color);
+        }
+
+        .game-area {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+        
+        #game-grid-container {
+            position: relative;
+        }
+
+        #game-grid {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            grid-gap: 10px;
+            background-color: var(--grid-bg);
+            padding: 10px;
+            border-radius: 12px;
+            box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.2);
+            position: relative;
+        }
+        
+        .element-square {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 100%;
+            padding-top: 100%; /* Creates a perfect square based on width */
+            position: relative;
+            background-color: var(--element-bg);
+            border-radius: 8px;
+            font-size: 1rem;
+            font-weight: bold;
+            color: #2d3748;
+            cursor: pointer;
+            transition: transform 0.2s, background-color 0.2s;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+
+        .element-symbol {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+        }
+
+        .element-square:hover {
+            transform: scale(1.05);
+            background-color: var(--element-hover-bg);
+        }
+
+        .element-square.selected {
+            background-color: var(--selected-bg);
+            color: var(--text-color);
+            box-shadow: 0 0 10px var(--selected-bg);
+        }
+        
+        #game-grid.disabled .element-square {
+            pointer-events: none;
+            cursor: not-allowed;
+            opacity: 0.7;
+        }
+
+        .reaction-line {
+            position: absolute;
+            height: 4px;
+            background-color: var(--line-color);
+            z-index: 10;
+            transition: all 0.2s ease-in-out;
+            opacity: 0;
+            border-radius: 2px;
+        }
+        
+        .reaction-line.active {
+            opacity: 1;
+        }
+
+        .molecule-display-container {
+            background-color: var(--container-bg);
+            padding: 15px;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        
+        #current-molecule-name {
+            font-size: 1.5rem;
+            font-weight: 700;
+            margin-bottom: 10px;
+            color: var(--score-color);
+        }
+
+        #current-molecule-elements {
+            display: flex;
+            justify-content: center;
+            gap: 5px;
+            flex-wrap: wrap;
+        }
+
+        .molecule-element {
+            background-color: var(--hard-molecule-bg);
+            color: var(--text-color);
+            padding: 5px 10px;
+            border-radius: 6px;
+            font-size: 0.9rem;
+            font-weight: bold;
+        }
+
+        #combo-message {
+            font-size: 1.2rem;
+            font-weight: bold;
+            color: var(--combo-color);
+            margin-top: 10px;
+            visibility: hidden;
+            opacity: 0;
+            transition: opacity 0.5s ease-in-out;
+        }
+        
+        #combo-message.visible {
+            visibility: visible;
+            opacity: 1;
+        }
+        
+        .hint-message {
+            position: absolute;
+            bottom: 10px;
+            left: 50%;
+            transform: translateX(-50%);
+            background-color: rgba(0,0,0,0.6);
+            color: #fff;
+            padding: 8px 15px;
+            border-radius: 8px;
+            font-size: 0.9rem;
+            opacity: 0;
+            transition: opacity 0.5s ease-in-out;
+            pointer-events: none;
+        }
+        
+        .hint-message.visible {
+            opacity: 1;
+        }
+
+        .button-container {
+            display: flex;
+            justify-content: center;
+            gap: 15px;
+            margin-top: 20px;
+            flex-wrap: wrap;
+        }
+        
+        .game-button {
+            padding: 12px 25px;
+            border: none;
+            border-radius: 8px;
+            font-family: inherit;
+            font-size: 1rem;
+            font-weight: bold;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s, background-color 0.2s;
+            background-color: var(--btn-bg);
+            color: var(--text-color);
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.2);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .game-button:hover {
+            background-color: var(--btn-hover-bg);
+            transform: translateY(-2px);
+            box-shadow: 0 6px 8px rgba(0, 0, 0, 0.3);
+        }
+
+        .game-button:active {
+            transform: translateY(0);
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.2);
+        }
+
+        .popup {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.7);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 100;
+            visibility: hidden;
+            opacity: 0;
+            transition: visibility 0s, opacity 0.3s ease-in-out;
+        }
+
+        .popup.visible {
+            visibility: visible;
+            opacity: 1;
+        }
+
+        .popup-content {
+            background-color: var(--popup-bg);
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 8px 15px rgba(0, 0, 0, 0.3);
+            max-width: 90%;
+            max-height: 90%;
+            overflow-y: auto;
+            position: relative;
+            transform: scale(0.95);
+            transition: transform 0.3s ease-in-out;
+        }
+        
+        .popup.visible .popup-content {
+            transform: scale(1);
+        }
+
+        .popup-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .popup-header h2 {
+            margin: 0;
+            font-size: 1.8rem;
+            color: var(--score-color);
+        }
+
+        .close-btn {
+            background: none;
+            border: none;
+            font-size: 1.8rem;
+            color: var(--text-color);
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+
+        .close-btn:hover {
+            transform: scale(1.1);
+        }
+        
+        #end-game-message {
+            font-size: 1.5rem;
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+
+        .popup-content p, .popup-content ul {
+            font-size: 1rem;
+            line-height: 1.5;
+            text-align: left;
+        }
+        
+        .high-score-list {
+            list-style: none;
+            padding: 0;
+        }
+        
+        .high-score-list li {
+            background: rgba(0,0,0,0.2);
+            padding: 10px;
+            margin-bottom: 8px;
+            border-radius: 6px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-weight: bold;
+        }
+
+        @media (min-width: 768px) {
+            .container {
+                flex-direction: row;
+                align-items: flex-start;
+            }
+            
+            .header {
+                align-items: flex-start;
+            }
+            
+            .game-area {
+                flex: 1;
+            }
+            
+            .stats-container {
+                flex-direction: column;
+                justify-content: flex-start;
+                gap: 20px;
+                padding: 20px;
+            }
+
+            .stat {
+                font-size: 1.5rem;
+            }
+            
+            .element-square {
+                font-size: 1.2rem;
+            }
+            
+            #title {
+                font-size: 3rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Game stats and controls on the left/top -->
+        <div class="game-area">
+            <div class="header">
+                <h1 id="title">Elemental</h1>
+                <div id="user-id"></div>
+            </div>
+
+            <div class="stats-container">
+                <div class="stat">Score: <span id="score">0</span></div>
+                <div class="stat">Time: <span id="timer">00:00</span></div>
+            </div>
+
+            <div id="current-molecule-container" class="molecule-display-container">
+                <div id="current-molecule-name"></div>
+                <div id="current-molecule-elements"></div>
+                <div id="combo-message"></div>
+            </div>
+            
+            <div id="game-grid-container">
+                <div id="game-grid"></div>
+                <div id="hint-message" class="hint-message"></div>
+            </div>
+
+            <div class="button-container">
+                <button id="start-button" class="game-button">
+                    <i class="fas fa-play"></i> Start Game
+                </button>
+                <button id="rules-button" class="game-button">
+                    <i class="fas fa-book"></i> Rules
+                </button>
+                <button id="high-score-button" class="game-button">
+                    <i class="fas fa-trophy"></i> High Scores
+                </button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Popups (centered and responsive) -->
+    <div id="end-game-box" class="popup">
+        <div class="popup-content">
+            <div class="popup-header">
+                <h2 id="end-game-title">Game Over!</h2>
+                <button class="close-btn"><i class="fas fa-times"></i></button>
+            </div>
+            <p id="end-game-message"></p>
+            <div class="button-container">
+                <button id="message-button" class="game-button">Play Again</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="rules-box" class="popup">
+        <div class="popup-content">
+            <div class="popup-header">
+                <h2>Rules</h2>
+                <button id="close-rules-button" class="close-btn"><i class="fas fa-times"></i></button>
+            </div>
+            <p><strong>Objective:</strong> Form molecules by tapping and connecting the correct elements on the grid.</p>
+            <p><strong>How to Play:</strong></p>
+            <ul>
+                <li>A target molecule will appear at the top.</li>
+                <li>Tap on the elements in the grid to select them.</li>
+                <li>Connect elements by drawing a line. You can only connect adjacent elements (horizontally, vertically, or diagonally).</li>
+                <li>Submit the selected elements. If they form the target molecule, you earn points!</li>
+                <li>Each successful combination rewards you with time and points.</li>
+                <li>Form a molecule with a hard element (in red) to earn bonus points.</li>
+                <li>Keep going until the timer runs out.</li>
+            </ul>
+        </div>
+    </div>
+    
+    <div id="high-score-box" class="popup">
+        <div class="popup-content">
+            <div class="popup-header">
+                <h2>Global High Scores</h2>
+                <button id="close-high-score-button" class="close-btn"><i class="fas fa-times"></i></button>
+            </div>
+            <div id="loading-scores-message" style="text-align: center; margin-top: 20px; font-style: italic;">Loading scores...</div>
+            <ul id="high-score-list" class="high-score-list"></ul>
+        </div>
+    </div>
+    
+    <div id="info-box" class="popup">
+        <div class="popup-content">
+            <div class="popup-header">
+                <h2 id="info-title"></h2>
+                <button id="close-info-button" class="close-btn"><i class="fas fa-times"></i></button>
+            </div>
+            <p id="info-text"></p>
+        </div>
+    </div>
+
+<script type="module">
+    // Firebase Imports
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+    import { getAuth, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+    import { getFirestore, collection, onSnapshot, query, orderBy, limit, addDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+    // Global variables provided by the canvas environment
+    const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+    const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
+    const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+
+    // Game Elements
+    const gameGrid = document.getElementById('game-grid');
+    const scoreDisplay = document.getElementById('score');
+    const timerDisplay = document.getElementById('timer');
+    const currentMoleculeNameDisplay = document.getElementById('current-molecule-name');
+    const currentMoleculeElementsDisplay = document.getElementById('current-molecule-elements');
+    const comboMessage = document.getElementById('combo-message');
+    const hintMessage = document.getElementById('hint-message');
+    const startButton = document.getElementById('start-button');
+    const rulesButton = document.getElementById('rules-button');
+    const highScoreButton = document.getElementById('high-score-button');
+    const endMessageBox = document.getElementById('end-game-box');
+    const rulesBox = document.getElementById('rules-box');
+    const highScoreBox = document.getElementById('high-score-box');
+    const infoBox = document.getElementById('info-box');
+    const messageButton = document.getElementById('message-button');
+    const closeRulesButton = document.getElementById('close-rules-button');
+    const closeHighScoreButton = document.getElementById('close-high-score-button');
+    const closeInfoButton = document.getElementById('close-info-button');
+    const userIdDisplay = document.getElementById('user-id');
+    const highScoreList = document.getElementById('high-score-list');
+    const loadingScoresMessage = document.getElementById('loading-scores-message');
+    
+    // Game State Variables
+    const elements = ['H', 'C', 'O', 'N', 'S', 'P', 'Na', 'Cl', 'K'];
+    const molecules = [
+        { name: 'Water (H₂O)', elements: ['H', 'H', 'O'], score: 100 },
+        { name: 'Carbon Dioxide (CO₂)', elements: ['C', 'O', 'O'], score: 120 },
+        { name: 'Methane (CH₄)', elements: ['C', 'H', 'H', 'H', 'H'], score: 150 },
+        { name: 'Ammonia (NH₃)', elements: ['N', 'H', 'H', 'H'], score: 130 },
+        { name: 'Salt (NaCl)', elements: ['Na', 'Cl'], score: 200, isHard: true },
+        { name: 'Sulfuric Acid (H₂SO₄)', elements: ['H', 'H', 'S', 'O', 'O', 'O', 'O'], score: 300, isHard: true },
+        { name: 'Glucose (C₆H₁₂O₆)', elements: ['C', 'C', 'C', 'C', 'C', 'C', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'H', 'O', 'O', 'O', 'O', 'O', 'O'], score: 500, isHard: true }
+    ];
+    let score = 0;
+    let timer = 90; // 90 seconds
+    let timerInterval = null;
+    let hintTimerInterval = null;
+    let selectedElements = [];
+    let currentMolecule = null;
+    let gridElements = [];
+    let comboCount = 0;
+    let isGameRunning = false;
+    let userUid = null;
+    let db, auth;
+
+    // --- Firebase & Firestore Setup ---
+    const initFirebase = async () => {
+        try {
+            const app = initializeApp(firebaseConfig);
+            db = getFirestore(app);
+            auth = getAuth(app);
+            await (initialAuthToken ? signInWithCustomToken(auth, initialAuthToken) : signInAnonymously(auth));
+            userUid = auth.currentUser.uid;
+            userIdDisplay.textContent = `User ID: ${userUid}`;
+            userIdDisplay.style.display = 'block';
+            console.log("Firebase initialized and user signed in:", userUid);
+
+            // Fetch scores in real-time
+            fetchGlobalHighScores();
+
+        } catch (error) {
+            console.error("Firebase initialization failed:", error);
+            userIdDisplay.textContent = `Error: Cannot load scores`;
+        }
+    };
+
+    const addScoreToFirestore = async (score) => {
+        if (!db || !userUid) {
+            console.error("Firestore not initialized.");
+            return;
+        }
+
+        const scoresRef = collection(db, "artifacts", appId, "public", "data", "high-scores");
+        
+        try {
+            // Check if this score is high enough to be on the board
+            const topScoresQuery = query(scoresRef, orderBy("score", "desc"), limit(10));
+            const topScoresSnapshot = await getDocs(topScoresQuery);
+            const topScores = topScoresSnapshot.docs.map(doc => doc.data().score);
+            
+            const minTopScore = topScores.length < 10 ? 0 : topScores[topScores.length - 1];
+
+            if (score >= minTopScore) {
+                await addDoc(scoresRef, {
+                    userId: userUid,
+                    score: score,
+                    createdAt: new Date()
+                });
+                console.log("Score added to Firestore:", score);
+            } else {
+                console.log("Score not high enough to be on leaderboard.");
+            }
+        } catch (e) {
+            console.error("Error adding score to Firestore:", e);
+        }
+    };
+
+    const fetchGlobalHighScores = () => {
+        if (!db) return;
+
+        const scoresRef = collection(db, "artifacts", appId, "public", "data", "high-scores");
+        const q = query(scoresRef, orderBy("score", "desc"), limit(10));
+
+        // Use onSnapshot for real-time updates
+        onSnapshot(q, (snapshot) => {
+            const scores = [];
+            snapshot.forEach((doc) => {
+                scores.push(doc.data());
+            });
+            displayHighScores(scores);
+        }, (error) => {
+            console.error("Error fetching high scores:", error);
+            loadingScoresMessage.textContent = 'Failed to load scores.';
+        });
+    };
+    
+    const displayHighScores = (scores) => {
+        highScoreList.innerHTML = '';
+        loadingScoresMessage.style.display = 'none';
+        if (scores.length === 0) {
+            highScoreList.innerHTML = '<li>No scores yet. Be the first to play!</li>';
+            return;
+        }
+        scores.forEach((score, index) => {
+            const li = document.createElement('li');
+            li.innerHTML = `
+                <span>${index + 1}.</span>
+                <span>User: ${score.userId.substring(0, 4)}...</span>
+                <span>${score.score}</span>
+            `;
+            highScoreList.appendChild(li);
+        });
+    };
+
+    // --- Game Logic ---
+    const generateGrid = () => {
+        gameGrid.innerHTML = '';
+        gridElements = [];
+        for (let i = 0; i < 25; i++) {
+            const element = elements[Math.floor(Math.random() * elements.length)];
+            const square = document.createElement('div');
+            square.className = 'element-square';
+            square.dataset.index = i;
+            square.innerHTML = `<span class="element-symbol">${element}</span>`;
+            
+            // Touch and click event listeners
+            square.addEventListener('click', () => handleElementClick(square));
+            square.addEventListener('touchstart', (e) => {
+                e.preventDefault();
+                handleElementClick(square);
+            });
+            
+            gameGrid.appendChild(square);
+            gridElements.push(element);
+        }
+    };
+    
+    const getRandomMolecule = () => {
+        const randomIndex = Math.floor(Math.random() * molecules.length);
+        return molecules[randomIndex];
+    };
+
+    const updateMoleculeDisplay = () => {
+        currentMolecule = getRandomMolecule();
+        currentMoleculeNameDisplay.textContent = currentMolecule.name;
+        currentMoleculeElementsDisplay.innerHTML = '';
+        currentMolecule.elements.forEach(element => {
+            const elementSpan = document.createElement('span');
+            elementSpan.className = 'molecule-element';
+            if (currentMolecule.isHard) {
+                elementSpan.classList.add('hard-molecule');
+            }
+            elementSpan.textContent = element;
+            currentMoleculeElementsDisplay.appendChild(elementSpan);
+        });
+    };
+
+    const updateScore = (points) => {
+        score += points;
+        scoreDisplay.textContent = score;
+        comboCount++;
+        if (comboCount > 1) {
+            const comboPoints = (comboCount - 1) * 20;
+            score += comboPoints;
+            scoreDisplay.textContent = score;
+            showComboMessage(comboCount);
+        }
+    };
+    
+    const showComboMessage = (count) => {
+        comboMessage.textContent = `${count}x Combo! +${(count - 1) * 20}`;
+        comboMessage.classList.add('visible');
+        setTimeout(() => {
+            comboMessage.classList.remove('visible');
+        }, 1500);
+    };
+
+    const updateTimer = () => {
+        timer--;
+        const minutes = Math.floor(timer / 60);
+        const seconds = timer % 60;
+        timerDisplay.textContent = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+        
+        if (timer <= 0) {
+            endGame();
+        } else if (timer <= 10) {
+            timerDisplay.style.color = 'red';
+        }
+    };
+    
+    const showHint = () => {
+        if (!isGameRunning) return;
+        const requiredElements = [...currentMolecule.elements];
+        const matchingIndices = [];
+        for (let i = 0; i < gridElements.length; i++) {
+            const element = gridElements[i];
+            const requiredIndex = requiredElements.indexOf(element);
+            if (requiredIndex !== -1) {
+                matchingIndices.push(i);
+                requiredElements.splice(requiredIndex, 1);
+            }
+        }
+        
+        if (matchingIndices.length > 0) {
+            const randomHintIndex = matchingIndices[Math.floor(Math.random() * matchingIndices.length)];
+            const square = gameGrid.querySelector(`[data-index='${randomHintIndex}']`);
+            if (square) {
+                square.style.transform = 'scale(1.1)';
+                setTimeout(() => square.style.transform = 'scale(1)', 500);
+            }
+        }
+        
+        hintMessage.textContent = "Hurry up! The time is running out!";
+        hintMessage.classList.add('visible');
+        setTimeout(() => hintMessage.classList.remove('visible'), 3000);
+    };
+
+    const handleElementClick = (square) => {
+        if (!isGameRunning) return;
+        
+        const index = parseInt(square.dataset.index);
+        
+        // If already selected, deselect
+        if (selectedElements.includes(index)) {
+            const idx = selectedElements.indexOf(index);
+            selectedElements.splice(idx, 1);
+            square.classList.remove('selected');
+        } else {
+            // Check if adjacent to a previously selected element
+            const lastSelectedIndex = selectedElements[selectedElements.length - 1];
+            const isAdjacent = selectedElements.length === 0 || isAdjacentElement(lastSelectedIndex, index);
+            
+            if (isAdjacent) {
+                selectedElements.push(index);
+                square.classList.add('selected');
+            }
+        }
+        
+        updateReactionLine();
+        
+        // Check if a molecule is formed after each click
+        if (selectedElements.length === currentMolecule.elements.length) {
+            checkSolution();
+        }
+    };
+
+    const isAdjacentElement = (idx1, idx2) => {
+        const row1 = Math.floor(idx1 / 5);
+        const col1 = idx1 % 5;
+        const row2 = Math.floor(idx2 / 5);
+        const col2 = idx2 % 5;
+        
+        const rowDiff = Math.abs(row1 - row2);
+        const colDiff = Math.abs(col1 - col2);
+        
+        // Check for adjacency (horizontally, vertically, or diagonally)
+        return rowDiff <= 1 && colDiff <= 1;
+    };
+    
+    const updateReactionLine = () => {
+        // Clear all existing lines
+        document.querySelectorAll('.reaction-line').forEach(line => line.remove());
+        
+        for (let i = 0; i < selectedElements.length - 1; i++) {
+            const startIdx = selectedElements[i];
+            const endIdx = selectedElements[i+1];
+            
+            const startRect = gameGrid.children[startIdx].getBoundingClientRect();
+            const endRect = gameGrid.children[endIdx].getBoundingClientRect();
+            const gridRect = gameGrid.getBoundingClientRect();
+            
+            const startX = startRect.left - gridRect.left + startRect.width / 2;
+            const startY = startRect.top - gridRect.top + startRect.height / 2;
+            const endX = endRect.left - gridRect.left + endRect.width / 2;
+            const endY = endRect.top - gridRect.top + endRect.height / 2;
+            
+            const length = Math.sqrt(Math.pow(endX - startX, 2) + Math.pow(endY - startY, 2));
+            const angle = Math.atan2(endY - startY, endX - startX) * 180 / Math.PI;
+            
+            const line = document.createElement('div');
+            line.className = 'reaction-line active';
+            line.style.width = `${length}px`;
+            line.style.transform = `rotate(${angle}deg)`;
+            line.style.left = `${startX}px`;
+            line.style.top = `${startY}px`;
+            line.style.transformOrigin = '0 0';
+            
+            gameGrid.appendChild(line);
+        }
+    };
+
+    const checkSolution = () => {
+        const selectedSymbols = selectedElements.map(index => gridElements[index]).sort();
+        const moleculeSymbols = [...currentMolecule.elements].sort();
+        
+        const isMatch = JSON.stringify(selectedSymbols) === JSON.stringify(moleculeSymbols);
+
+        if (isMatch) {
+            updateScore(currentMolecule.score);
+            timer += 10; // Add 10 seconds for a correct molecule
+            setTimeout(() => {
+                resetSelection();
+                updateMoleculeDisplay();
+            }, 500);
+        } else {
+            comboCount = 0; // Reset combo on incorrect attempt
+            setTimeout(() => {
+                resetSelection();
+            }, 500);
+        }
+    };
+    
+    const resetSelection = () => {
+        selectedElements = [];
+        document.querySelectorAll('.element-square.selected').forEach(square => {
+            square.classList.remove('selected');
+        });
+        document.querySelectorAll('.reaction-line').forEach(line => line.remove());
+    };
+
+    const initGame = () => {
+        isGameRunning = true;
+        score = 0;
+        timer = 90;
+        comboCount = 0;
+        scoreDisplay.textContent = score;
+        timerDisplay.textContent = "01:30";
+        timerDisplay.style.color = 'var(--timer-color)';
+        
+        generateGrid();
+        updateMoleculeDisplay();
+        resetSelection();
+
+        startButton.style.display = 'none';
+        gameGrid.style.opacity = 1;
+        gameGrid.classList.remove('disabled');
+        
+        clearInterval(timerInterval);
+        timerInterval = setInterval(updateTimer, 1000);
+        
+        clearTimeout(hintTimerInterval);
+        hintTimerInterval = setTimeout(showHint, 60000); // 1-minute hint
+    };
+
+    const endGame = () => {
+        isGameRunning = false;
+        clearInterval(timerInterval);
+        clearTimeout(hintTimerInterval);
+        
+        // Show end game message
+        const endMessage = document.getElementById('end-game-message');
+        endMessage.innerHTML = `Your Final Score is <span style="color: var(--score-color); font-size: 2rem;">${score}</span>!`;
+        hideAllPopups();
+        endMessageBox.classList.add('visible');
+        
+        // Add score to Firestore
+        addScoreToFirestore(score);
+    };
+
+    const hideAllPopups = () => {
+        document.querySelectorAll('.popup').forEach(p => p.classList.remove('visible'));
+    };
+
+    // --- Event Listeners ---
+    startButton.addEventListener('click', () => {
+        hideAllPopups();
+        initGame();
+    });
+
+    messageButton.addEventListener('click', () => {
+        hideAllPopups();
+        initGame();
+    });
+    
+    rulesButton.addEventListener('click', () => {
+        hideAllPopups();
+        rulesBox.classList.add('visible');
+    });
+
+    closeRulesButton.addEventListener('click', () => {
+        hideAllPopups();
+    });
+    
+    highScoreButton.addEventListener('click', () => {
+        hideAllPopups();
+        highScoreBox.classList.add('visible');
+        // Fetch and display scores from Firestore when button is clicked
+        // The onSnapshot listener already handles this, but we can re-trigger a fetch
+        // if the user wants to see the latest list.
+    });
+
+    closeHighScoreButton.addEventListener('click', () => {
+        hideAllPopups();
+    });
+    
+    // Initial call to start the game
+    window.onload = function() {
+        initFirebase();
+    };
+
+</script>
+</body>
+</html>
