@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Elemental by Azuberkelium</title>
+<style>
+  body { font-family: Arial, sans-serif; margin: 0; background: #f0f0f0; display: flex; justify-content: center; align-items: flex-start; padding: 20px; }
+  .container { display: flex; gap: 20px; max-width: 1000px; flex-wrap: wrap; justify-content: center; }
+  .grid { display: grid; grid-template-columns: repeat(8, 60px); grid-template-rows: repeat(8, 60px); gap: 10px; }
+  .element { width: 60px; height: 60px; background: #fff; border: 2px solid #ccc; display: flex; justify-content: center; align-items: center; cursor: pointer; user-select: none; font-size: 1.2em; border-radius: 8px; }
+  .sidebar { width: 250px; display: flex; flex-direction: column; gap: 10px; }
+  .button { padding: 12px; font-size: 1.1em; cursor: pointer; border-radius: 6px; }
+  .timer-bar { width: 100%; height: 20px; background: #ddd; margin-top: 10px; position: relative; border-radius: 10px; overflow: hidden; }
+  .timer-fill { height: 100%; width: 100%; background: #4caf50; transition: width 0.2s; }
+  .leaderboard { max-height: 200px; overflow-y: auto; border: 1px solid #ccc; background: #fff; padding: 10px; border-radius: 6px; }
+  @media (max-width: 768px) {
+    .container { flex-direction: column; align-items: center; }
+    .sidebar { width: 90%; margin-left: 0; margin-top: 15px; }
+    .grid { grid-template-columns: repeat(6, 60px); grid-template-rows: repeat(6, 60px); gap: 8px; }
+    .element { width: 60px; height: 60px; font-size: 1.4em; }
+    .button { width: 100%; font-size: 1.3em; padding: 15px 0; }
+  }
+  @keyframes flashRed {
+    0%, 50%, 100% { background: #f44336; }
+    25%, 75% { background: #ffeb3b; }
+  }
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="grid" id="grid"></div>
+  <div class="sidebar">
+    <h2>Elemental by Azuberkelium</h2>
+    <div id="score">Score: 0</div>
+    <div class="timer-bar"><div id="timerFill" class="timer-fill"></div></div>
+    <button id="startBtn" class="button">Start Game</button>
+    <div id="nameInputContainer" style="display:none;">
+      <input type="text" id="playerName" placeholder="Enter your name" style="padding:8px; font-size:1em; width:100%; margin-bottom:5px;" />
+      <button id="submitScore" class="button">Submit Score</button>
+    </div>
+    <h3>Leaderboard</h3>
+    <div class="leaderboard" id="leaderboard"></div>
+  </div>
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore-compat.js"></script>
+
+<script>
+  // --- Firebase setup ---
+  const firebaseConfig = {
+    apiKey: "YOUR_API_KEY",
+    authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
+    projectId: "YOUR_PROJECT_ID",
+    storageBucket: "YOUR_PROJECT_ID.appspot.com",
+    messagingSenderId: "SENDER_ID",
+    appId: "APP_ID"
+  };
+  firebase.initializeApp(firebaseConfig);
+  const db = firebase.firestore();
+
+  const grid = document.getElementById('grid');
+  const scoreEl = document.getElementById('score');
+  const timerFill = document.getElementById('timerFill');
+  const startBtn = document.getElementById('startBtn');
+  const nameInputContainer = document.getElementById('nameInputContainer');
+  const submitScoreBtn = document.getElementById('submitScore');
+  const playerNameInput = document.getElementById('playerName');
+  const leaderboardEl = document.getElementById('leaderboard');
+
+  const GRID_SIZE = 8;
+  const BONUS_CHANCE = 0.2;
+  let score = 0;
+  let timeLeft = 60;
+  let timerInterval;
+
+  function createGrid() {
+    grid.innerHTML = '';
+    for(let i=0;i<GRID_SIZE*GRID_SIZE;i++){
+      const el = document.createElement('div');
+      el.classList.add('element');
+      el.addEventListener('click',()=>handleClick(el));
+      grid.appendChild(el);
+    }
+  }
+
+  function placeElements() {
+    const elements = Array.from(grid.children);
+    elements.forEach(el=>{
+      el.textContent = Math.random() < BONUS_CHANCE ? '⭐' : '🔹';
+    });
+  }
+
+  function handleClick(el){
+    if(el.textContent === '⭐') score += 5;
+    else score += 1;
+    scoreEl.textContent = 'Score: '+score;
+    placeElements();
+  }
+
+  function updateTimerUI() {
+    timerFill.style.width = `${(timeLeft/60)*100}%`;
+    if(timeLeft <= 10) timerFill.style.animation = "flashRed 1s infinite";
+    else timerFill.style.animation = "";
+  }
+
+  function startGame(){
+    score = 0;
+    timeLeft = 60;
+    scoreEl.textContent = 'Score: 0';
+    nameInputContainer.style.display = 'none';
+    startBtn.disabled = true;
+    createGrid();
+    placeElements();
+    updateTimerUI();
+
+    timerInterval = setInterval(()=>{
+      timeLeft--;
+      updateTimerUI();
+      if(timeLeft <= 0) endGame();
+    },1000);
+  }
+
+  function endGame(){
+    clearInterval(timerInterval);
+    startBtn.disabled = false;
+    nameInputContainer.style.display = 'block';
+    alert('Game Over! Enter your name to save score.');
+  }
+
+  submitScoreBtn.addEventListener('click',()=>{
+    const name = playerNameInput.value.trim();
+    if(!name) return;
+    db.collection('leaderboard').add({name, score}).then(()=>{loadLeaderboard();});
+    playerNameInput.value = '';
+    nameInputContainer.style.display = 'none';
+  });
+
+  function loadLeaderboard(){
+    leaderboardEl.innerHTML = '';
+    db.collection('leaderboard').orderBy('score','desc').limit(10).get().then(snapshot=>{
+      snapshot.forEach(doc=>{
+        const div = document.createElement('div');
+        div.textContent = `${doc.data().name}: ${doc.data().score}`;
+        leaderboardEl.appendChild(div);
+      });
+    });
+  }
+
+  startBtn.addEventListener('click', startGame);
+  loadLeaderboard();
+</script>
+</body>
+</html>
