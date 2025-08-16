@@ -20,7 +20,8 @@
             --element-hover-bg: #cbd5e0;
             --selected-bg: #38a169;
             --score-color: #ecc94b;
-            --timer-color: #f56565;
+            --timer-color: #48bb78;
+            --timer-bg: #a0aec0;
             --line-color: #48bb78;
             --btn-bg: #4c51bf;
             --btn-hover-bg: #434190;
@@ -28,6 +29,7 @@
             --hard-molecule-bg: #f56565;
             --popup-bg: #2d3748;
             --popup-border: #4a5568;
+            --highlight-color: #f6ad55;
         }
 
         body {
@@ -162,6 +164,17 @@
             color: var(--text-color);
             box-shadow: 0 0 10px var(--selected-bg);
         }
+
+        .element-square.highlight {
+            background-color: var(--highlight-color);
+            transform: scale(1.1);
+            animation: highlight-pulse 1s infinite alternate;
+        }
+
+        @keyframes highlight-pulse {
+            from { transform: scale(1.1); box-shadow: 0 0 10px var(--highlight-color); }
+            to { transform: scale(1.05); box-shadow: 0 0 15px var(--highlight-color); }
+        }
         
         #game-grid.disabled .element-square {
             pointer-events: none;
@@ -263,23 +276,28 @@
             opacity: 1;
         }
         
-        .hint-message {
+        #timer-bar {
             position: absolute;
-            bottom: 10px;
-            left: 50%;
-            transform: translateX(-50%);
-            background-color: rgba(0,0,0,0.6);
-            color: #fff;
-            padding: 8px 15px;
-            border-radius: 8px;
-            font-size: 0.9rem;
-            opacity: 0;
-            transition: opacity 0.5s ease-in-out;
-            pointer-events: none;
+            bottom: 0;
+            left: 0;
+            height: 10px;
+            width: 100%;
+            background-color: var(--timer-color);
+            border-radius: 0 0 12px 12px;
+            transition: width 1s linear, background-color 0.5s;
         }
-        
-        .hint-message.visible {
-            opacity: 1;
+
+        #timer-bar.warning {
+            background-color: var(--hard-molecule-bg);
+        }
+
+        #timer-bar.critical {
+            animation: pulse 1s infinite alternate;
+        }
+
+        @keyframes pulse {
+            from { background-color: var(--hard-molecule-bg); }
+            to { background-color: #ff0000; }
         }
 
         .button-container {
@@ -483,7 +501,8 @@
             
             <div id="game-grid-container">
                 <div id="game-grid"></div>
-                <div id="hint-message" class="hint-message"></div>
+                <!-- The timer line is here -->
+                <div id="timer-bar"></div>
             </div>
 
             <div class="button-container">
@@ -577,9 +596,9 @@
     const gameGrid = document.getElementById('game-grid');
     const scoreDisplay = document.getElementById('score');
     const timerDisplay = document.getElementById('timer');
+    const timerBar = document.getElementById('timer-bar');
     const moleculeListDisplay = document.getElementById('molecule-list');
     const comboMessage = document.getElementById('combo-message');
-    const hintMessage = document.getElementById('hint-message');
     const startButton = document.getElementById('start-button');
     const rulesButton = document.getElementById('rules-button');
     const highScoreButton = document.getElementById('high-score-button');
@@ -602,6 +621,7 @@
     const GRID_COLS = 5;
     const GRID_ROWS = 7;
     const GRID_SIZE = GRID_COLS * GRID_ROWS;
+    const TOTAL_TIME = 60;
     
     const elements = ['H', 'C', 'O', 'N', 'S', 'P', 'Na', 'Cl', 'K'];
     // List of molecules updated to have a maximum of 4 elements.
@@ -615,7 +635,7 @@
         { name: 'Nitric Oxide (NO)', elements: ['N', 'O'] }
     ];
     let score = 0;
-    let timer = 60;
+    let timer = TOTAL_TIME;
     let timerInterval = null;
     let hintTimerInterval = null;
     let selectedElements = [];
@@ -624,9 +644,8 @@
     let userUid = null;
     let db, auth;
     let todayMolecules = [];
-    let hasFoundMolecule = false;
-    let finalScore = 0;
     let lastFindTime = null;
+    let highlightTimeout = null;
 
     // --- Firebase & Firestore Setup ---
     const initFirebase = async () => {
@@ -805,20 +824,84 @@
         const seconds = timer % 60;
         timerDisplay.textContent = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
         
+        // Update timer bar
+        const timerPercentage = (timer / TOTAL_TIME) * 100;
+        timerBar.style.width = `${timerPercentage}%`;
+        
+        // Change color and animation
+        timerBar.classList.remove('warning', 'critical');
+        if (timer <= 10) {
+            timerBar.classList.add('warning');
+            if (timer <= 5) {
+                timerBar.classList.add('critical');
+            }
+        }
+
         if (timer <= 0) {
             endGame('lost');
-        } else if (timer <= 10) {
-            timerDisplay.style.color = 'red';
         }
     };
     
-    const showHint = () => {
-        if (!isGameRunning || hasFoundMolecule) return;
-        hintMessage.textContent = "Hurry up! The time is running out!";
-        hintMessage.classList.add('visible');
-        setTimeout(() => hintMessage.classList.remove('visible'), 3000);
-    };
+    // Function to find and highlight a valid path
+    const findAndHighlightHintPath = () => {
+        if (!isGameRunning) return;
 
+        // A recursive helper function to find a path
+        const findPathRecursive = (currentIndex, remainingElements, visitedIndices) => {
+            if (remainingElements.length === 0) {
+                return [currentIndex];
+            }
+
+            const currentElement = remainingElements[0];
+            const nextElements = remainingElements.slice(1);
+            
+            const row = Math.floor(currentIndex / GRID_COLS);
+            const col = currentIndex % GRID_COLS;
+
+            for (let r = -1; r <= 1; r++) {
+                for (let c = -1; c <= 1; c++) {
+                    if (r === 0 && c === 0) continue;
+                    
+                    const nextRow = row + r;
+                    const nextCol = col + c;
+                    const nextIndex = nextRow * GRID_COLS + nextCol;
+                    
+                    if (nextRow >= 0 && nextRow < GRID_ROWS && nextCol >= 0 && nextCol < GRID_COLS && !visitedIndices.has(nextIndex)) {
+                        if (gridElements[nextIndex] === nextElements[0]) {
+                            const newVisited = new Set(visitedIndices);
+                            newVisited.add(nextIndex);
+                            const path = findPathRecursive(nextIndex, nextElements, newVisited);
+                            if (path) {
+                                return [currentIndex, ...path];
+                            }
+                        }
+                    }
+                }
+            }
+            return null;
+        };
+
+        for (const molecule of todayMolecules) {
+            const moleculeElements = [...molecule.elements].sort();
+            for (let i = 0; i < GRID_SIZE; i++) {
+                if (gridElements[i] === moleculeElements[0]) {
+                    const path = findPathRecursive(i, moleculeElements, new Set([i]));
+                    if (path) {
+                        path.forEach(idx => {
+                            gameGrid.children[idx].classList.add('highlight');
+                        });
+                        // Remove highlight after a few seconds
+                        clearTimeout(highlightTimeout);
+                        highlightTimeout = setTimeout(() => {
+                            document.querySelectorAll('.element-square.highlight').forEach(el => el.classList.remove('highlight'));
+                        }, 3000);
+                        return;
+                    }
+                }
+            }
+        }
+    };
+    
     const handleElementClick = (square) => {
         if (!isGameRunning) return;
         
@@ -904,8 +987,9 @@
 
         if (foundMatch) {
             updateScore(matchedMolecule);
-            hasFoundMolecule = true;
             lastFindTime = Date.now();
+            clearTimeout(hintTimerInterval);
+            hintTimerInterval = setTimeout(findAndHighlightHintPath, 7000);
             regenerateSelectedTiles();
         } else {
             // No match found, just reset selection
@@ -920,6 +1004,9 @@
         const oldSelected = [...selectedElements];
         resetSelection();
 
+        // Remove any existing highlights
+        document.querySelectorAll('.element-square.highlight').forEach(el => el.classList.remove('highlight'));
+        
         // Replace the elements in the grid
         for (const index of oldSelected) {
             const newElement = elements[Math.floor(Math.random() * elements.length)];
@@ -1011,12 +1098,12 @@
     const initGame = () => {
         isGameRunning = true;
         score = 0;
-        timer = 60;
-        hasFoundMolecule = false;
+        timer = TOTAL_TIME;
         lastFindTime = Date.now();
         scoreDisplay.textContent = score;
         timerDisplay.textContent = "01:00";
-        timerDisplay.style.color = 'var(--timer-color)';
+        timerBar.style.width = '100%';
+        timerBar.classList.remove('warning', 'critical');
         
         generateAndValidateGrid();
         resetSelection();
@@ -1029,13 +1116,14 @@
         timerInterval = setInterval(updateTimer, 1000);
         
         clearTimeout(hintTimerInterval);
-        hintTimerInterval = setTimeout(showHint, 7000);
+        hintTimerInterval = setTimeout(findAndHighlightHintPath, 7000);
     };
 
     const endGame = (outcome) => {
         isGameRunning = false;
         clearInterval(timerInterval);
         clearTimeout(hintTimerInterval);
+        clearTimeout(highlightTimeout);
         finalScore = score;
         
         const endMessage = document.getElementById('end-game-message');
